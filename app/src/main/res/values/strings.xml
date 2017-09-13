@@ -1,5 +1,6 @@
 <resources>
-    <string name="app_name">Accontech Video Application</string>
+    <string name="app_name">Accontech Video</string>
     <string name="at_list_one_video_is_downloaded">At list one video is downloaded</string>
     <string name="videos_names_are_downloaded">videos names are downloaded</string>
+    <string name="permission_button_text">Enable permission for downloaded videos</string>
 </resources>

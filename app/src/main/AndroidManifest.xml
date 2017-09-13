@@ -22,7 +22,7 @@
             </intent-filter>
         </activity>
         <service
-            android:name=".services.VideosNameDownloaderService"
+            android:name=".services.VideosNamesDownloaderService"
             android:exported="true"></service>
         <service
             android:name=".services.VideoDownloaderService"

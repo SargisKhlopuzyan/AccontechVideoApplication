@@ -1,26 +1,33 @@
 package com.example.sargiskh.accontechvideoapplication;
 
 import android.Manifest;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.media.AudioManager;
+import android.media.MediaPlayer;
+import android.os.Bundle;
 import android.os.Environment;
 import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.util.ArraySet;
 import android.support.v7.app.AppCompatActivity;
-import android.media.MediaPlayer;
-import android.os.Bundle;
 import android.util.Log;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.Window;
+import android.view.WindowManager;
+import android.widget.Button;
 import android.widget.MediaController;
 import android.widget.ProgressBar;
+import android.widget.SeekBar;
 import android.widget.Toast;
 import android.widget.VideoView;
 
 import com.example.sargiskh.accontechvideoapplication.helpers.Constants;
 import com.example.sargiskh.accontechvideoapplication.helpers.Utils;
 import com.example.sargiskh.accontechvideoapplication.services.VideoDownloaderService;
-import com.example.sargiskh.accontechvideoapplication.services.VideosNameDownloaderService;
+import com.example.sargiskh.accontechvideoapplication.services.VideosNamesDownloaderService;
 
 import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
@@ -32,186 +39,106 @@ import java.util.Set;
 
 public class VideoViewActivity extends AppCompatActivity {
 
-    private static String CURRENT_VIDEO_INDEX = "CURRENT_VIDEO_INDEX";
-    private static String PLAYED_VIDEOS_COUNT = "PLAYED_VIDEOS_COUNT";
-    private static String PLAYED_POSITION = "PLAYED_POSITION";
+    private static String CURRENT_PLAYING_VIDEO_INDEX = "CURRENT_PLAYING_VIDEO_INDEX";
+    private static String LOADED_VIDEOS_LIST = "LOADED_VIDEOS_LIST";
+    private static String VIDEO_PLAYED_DURATION = "VIDEO_PLAYED_DURATION";
+    private static String PROGRESS_BAR_VISIBILITY = "PROGRESS_BAR_VISIBILITY";
     private static String IS_PLAYING = "IS_PLAYING";
 
-    EventBus myEventBus = EventBus.getDefault();
-
-    private ProgressBar progressBar;
     private VideoView videoView;
+    private SeekBar seekBar;
+    private ProgressBar progressBar;
+    private Button permissionButton;
+
     private MediaController mediaControls;
 
-    private ArrayList<String> loadedVideosList = new ArrayList<>();
+    private ArrayList<String> loadedVideosNamesList = new ArrayList<>();
     private ArrayList<String> cachedVideosList = new ArrayList<>();
-    private int currentVideoIndex = 0;
-    private int playedVideosCount = 0;
 
-    private void todoFunction() {
-        loadedVideosList.add("videoplayback%20(1).mp4");
-        loadedVideosList.add("1335026_10201324763394940_3213_n.mp4");
-        loadedVideosList.add("13523484_518658811668898_1696164336_n.mp4");
-        loadedVideosList.add("13949747_1158791877513554_1053660187_n.mp4");
-        loadedVideosList.add("videoplayback.mp4");
-    }
+    private boolean isCachingCompleted = true;
+    private boolean isVideoPlaying = false;
+    private int currentPlayingVideoIndex = 0;
+
+
+    EventBus eventBus = EventBus.getDefault();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        requestWindowFeature(Window.FEATURE_NO_TITLE);
+        getWindow().setFlags(
+                WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                WindowManager.LayoutParams.FLAG_FULLSCREEN);
+
         setContentView(R.layout.activity_video_view);
 
-        getVideosNamesInCachedDirectory();
-
-        todoFunction();
-
-        requestPermissions();
+        getCachedVideosNames();
 
         findViews();
 
         setupMediaController();
 
         if (savedInstanceState != null) {
-            Log.e("LOG_TAG", "savedInstanceState");
-            currentVideoIndex = savedInstanceState.getInt(CURRENT_VIDEO_INDEX);
-            playedVideosCount = savedInstanceState.getInt(PLAYED_VIDEOS_COUNT);
-            int playedPosition = savedInstanceState.getInt(PLAYED_POSITION);
-            boolean isPlaying = savedInstanceState.getBoolean(IS_PLAYING);
 
-            if (isVideoCached(loadedVideosList.get(currentVideoIndex))) {
-                playVideoFromCache(loadedVideosList.get(currentVideoIndex), isPlaying, playedPosition);
+            if (!Utils.doesUserHavePermission(this)) {
+                permissionButton.setVisibility(View.VISIBLE);
             } else {
-                showProgressBar(true);
-                //TODO
-                playVideo();
+                permissionButton.setVisibility(View.GONE);
             }
 
-        } else {
-            Log.e("LOG_TAG", "savedInstanceState == null");
-            loadVideosName();
-            //TODO
-            todoFunction();
+            currentPlayingVideoIndex = savedInstanceState.getInt(CURRENT_PLAYING_VIDEO_INDEX);
+            loadedVideosNamesList = savedInstanceState.getStringArrayList(LOADED_VIDEOS_LIST);
+            int videoPlayedDuration = savedInstanceState.getInt(VIDEO_PLAYED_DURATION);
+            boolean isPlaying = savedInstanceState.getBoolean(IS_PLAYING);
+
+            int isVisible = savedInstanceState.getInt(PROGRESS_BAR_VISIBILITY) == View.VISIBLE ? View.VISIBLE : View.GONE;
+            progressBar.setVisibility(isVisible);
+
+            if (currentPlayingVideoIndex < loadedVideosNamesList.size()) {
+                String name = loadedVideosNamesList.get(currentPlayingVideoIndex);
+                if (name != null && isVideoCached(name)) {
+                    playVideoFromCache(loadedVideosNamesList.get(currentPlayingVideoIndex), isPlaying, videoPlayedDuration);
+                }
+            }
+        } else  {
+            if (!Utils.doesUserHavePermission(this)) {
+                permissionButton.setVisibility(View.VISIBLE);
+                requestPermissions();
+            } else {
+                permissionButton.setVisibility(View.GONE);
+                if (Utils.isNetworkAvailable(this)) {
+                    loadVideosNames();
+                } else {
+                    playVideo();
+                }
+            }
         }
+
+        setListeners();
+
+        videoView.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                int isVisible = seekBar.getVisibility() ==  View.VISIBLE ? View.GONE : View.VISIBLE;
+                seekBar.setVisibility(isVisible);
+                return false;
+            }
+        });
 
         // implement on completion listener on video view
         videoView.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
             @Override
             public void onCompletion(MediaPlayer mp) {
-                ++currentVideoIndex;
-                ++playedVideosCount;
-                playVideo();
-                Toast.makeText(getApplicationContext(), "Thank You...!!!", Toast.LENGTH_LONG).show(); // display a toast when an video is completed
+                playNextVideo();
             }
         });
 
         videoView.setOnErrorListener(new MediaPlayer.OnErrorListener() {
             @Override
             public boolean onError(MediaPlayer mp, int what, int extra) {
-                Toast.makeText(getApplicationContext(), "Oops An Error Occur While Playing Video...!!!", Toast.LENGTH_LONG).show(); // display a toast when an error is occured while playing an video
                 return false;
             }
         });
-    }
-
-    private boolean isNewVideosAvailable() {
-        if (getNotLoadedVideosNamesList().size() == 0) {
-            return false;
-        }
-        return true;
-    }
-
-    private void removeUnnecessaryCachedVideos() {
-        ArrayList<String> unnecessaryArrayList = getUnnecessaryVideosNamesList();
-        for (String name : unnecessaryArrayList) {
-            String videoAddress = Constants.CACHE_PATH + name;
-            File videoFile = new File(videoAddress);
-            if (videoFile.exists()) {
-                if (videoFile.delete()) {
-                    cachedVideosList.remove(name);
-                } else {
-                    Log.e("LOG_TAG", "Can not delete video");
-                }
-            }
-        }
-    }
-
-    private ArrayList<String> getUnnecessaryVideosNamesList() {
-
-        ArrayList<String> notNecessaryVideosNamesList = new ArrayList<>();
-        Set<String> loadedVideoListSet = new ArraySet<>();
-
-        for (String loadedName : loadedVideosList) {
-            loadedVideoListSet.add(loadedName);
-        }
-
-        for (String cachedName : cachedVideosList) {
-            if (loadedVideoListSet.add(cachedName)) {
-                notNecessaryVideosNamesList.add(cachedName);
-            }
-        }
-
-        return notNecessaryVideosNamesList;
-    }
-
-    private ArrayList<String> getNotLoadedVideosNamesList() {
-        ArrayList<String> uncachedVideoList = new ArrayList<>();
-        Set<String> uncachedVideoListSet = new ArraySet<>();
-
-        for (String cachedName : cachedVideosList) {
-            uncachedVideoListSet.add(cachedName);
-        }
-
-        for (String loadedVideoName : loadedVideosList) {
-            if (uncachedVideoListSet.add(loadedVideoName)) {
-                uncachedVideoList.add(loadedVideoName);
-            }
-        }
-
-        return uncachedVideoList;
-    }
-
-    private void playVideo() {
-
-        if (currentVideoIndex == cachedVideosList.size()) {
-
-            if (currentVideoIndex == playedVideosCount) {
-                playedVideosCount = 0;
-                currentVideoIndex = 0;
-                loadVideosName();
-            } else {
-                playedVideosCount = 0;
-                currentVideoIndex = 0;
-                playVideo();
-            }
-        } else  {
-            if (isVideoCached(cachedVideosList.get(currentVideoIndex))) {
-                playVideoFromCache(cachedVideosList.get(currentVideoIndex));
-            } else {
-                ++currentVideoIndex;
-                playVideo();
-            }
-        }
-    }
-
-    @Subscribe(threadMode = ThreadMode.MAIN)
-    public void messageEventFromService(EventMessage event){
-        String notification = event.getNotification();
-        Log.e("LOG_TAG", "notification: " + notification);
-        if (notification.equalsIgnoreCase(getString(R.string.videos_names_are_downloaded))) {
-
-            if (getUnnecessaryVideosNamesList().size() != 0) {
-                removeUnnecessaryCachedVideos();
-            }
-            //TODO
-            if (isNewVideosAvailable()) {
-                loadVideos(getNotLoadedVideosNamesList());
-            }
-
-        } else if (notification.equalsIgnoreCase(getString(R.string.at_list_one_video_is_downloaded))) {
-            currentVideoIndex = 0;
-            playedVideosCount = 0;
-            playVideo();
-        }
     }
 
     @Override
@@ -226,18 +153,114 @@ public class VideoViewActivity extends AppCompatActivity {
         super.onStop();
     }
 
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        outState.putInt(CURRENT_PLAYING_VIDEO_INDEX, currentPlayingVideoIndex);
+        outState.putInt(VIDEO_PLAYED_DURATION, videoView.getCurrentPosition());
+        outState.putBoolean(IS_PLAYING, videoView.isPlaying());
+        outState.putInt(PROGRESS_BAR_VISIBILITY, progressBar.getVisibility());
+        outState.putStringArrayList(LOADED_VIDEOS_LIST, loadedVideosNamesList);
+        super.onSaveInstanceState(outState);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        switch (requestCode) {
+            case 1: {
+                // If request is cancelled, the result arrays are empty.
+                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    // permission was granted
+                    permissionButton.setVisibility(View.GONE);
+                    loadVideosNames();
+                } else {
+                    permissionButton.setVisibility(View.VISIBLE);
+                    // permission denied
+                    Toast.makeText(this, "Permission denied to read your External storage", Toast.LENGTH_SHORT).show();
+                }
+                return;
+            }
+        }
+    }
+
+    @Subscribe(threadMode = ThreadMode.MAIN)
+    public void messageEventFromService(EventMessage event){
+        boolean isLoadingVideosNames = event.isLoadedVideosNames();
+
+        if (isLoadingVideosNames) {
+            Log.e("LOG_TAG", "VIDEO NAMES LOADED");
+            loadedVideosNamesList.clear();
+            for (String name : event.getVideosNames()) {
+                loadedVideosNamesList.add(name);
+            }
+            removeUnnecessaryCachedVideos();
+
+            if (Utils.doesUserHavePermission(this)) {
+                Log.e("LOG_TAG", "doesUserHavePermission: " + loadedVideosNamesList);
+                loadVideos(loadedVideosNamesList);
+            }
+
+        } else {
+            String cachedVideo = event.getLoadedVideoName();
+            if (cachedVideo != null) {
+                if (!cachedVideosList.contains(cachedVideo)) {
+                    cachedVideosList.add(cachedVideo);
+                }
+            }
+
+            if (cachedVideosList.size() > 0) {
+                progressBar.setVisibility(View.GONE);
+            } else {
+                progressBar.setVisibility(View.VISIBLE);
+            }
+
+            isCachingCompleted = event.isCachingCompleted();
+            if (!isVideoPlaying) {
+                isVideoPlaying = true;
+                playVideo();
+            }
+        }
+    }
+
+    // Requests permissions
     private void requestPermissions() {
         if (!Utils.doesUserHavePermission(this)) {
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE}, 1);
         }
     }
 
+    // Finds views
     private void findViews() {
-        // Find your VideoView in your video_main.xml layout
         videoView = (VideoView) findViewById(R.id.video_view);
+        seekBar = (SeekBar) findViewById(R.id.seekBar);
         progressBar = (ProgressBar) findViewById(R.id.progress_bar);
+        permissionButton = (Button) findViewById(R.id.button_permission);
     }
 
+    private void setListeners() {
+
+        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+
+                AudioManager audioManager = (AudioManager) getApplicationContext().getSystemService(Context.AUDIO_SERVICE);
+//                audioManager.adjustVolume(AudioManager.ADJUST_RAISE, AudioManager.FLAG_PLAY_SOUND);
+                Log.e("LOG_TAG", "progress: " + progress);
+                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, progress, 0);
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+
+            }
+        });
+    }
+
+    // Sets MediaController
     private void setupMediaController() {
         if (mediaControls == null) {
             // create an object of media controller class
@@ -249,6 +272,35 @@ public class VideoViewActivity extends AppCompatActivity {
         videoView.setMediaController(mediaControls);
     }
 
+    private void playNextVideo() {
+        ++currentPlayingVideoIndex;
+        playVideo();
+    }
+
+    private void playVideo() {
+        if (isCachingCompleted) {
+            if (currentPlayingVideoIndex == cachedVideosList.size()) {
+                currentPlayingVideoIndex = 0;
+                loadVideosNames();
+            } else {
+                playVideoFromCache(cachedVideosList.get(currentPlayingVideoIndex));
+            }
+
+        } else {
+            if (currentPlayingVideoIndex == cachedVideosList.size()) {
+                currentPlayingVideoIndex = 0;
+            }
+
+            String name = cachedVideosList.get(currentPlayingVideoIndex);
+            if (isVideoCached(name)) {
+                playVideoFromCache(name);
+            } else {
+                ++currentPlayingVideoIndex;
+                playVideo();
+            }
+        }
+    }
+
     private boolean isVideoCached(String videoName) {
         String videoAddress = Constants.CACHE_PATH + videoName;
         File  videoFile = new File(videoAddress);
@@ -257,27 +309,10 @@ public class VideoViewActivity extends AppCompatActivity {
         return false;
     }
 
-    private void getVideosNamesInCachedDirectory() {
-
-        String cacheDir = Environment.getExternalStorageDirectory() + File.separator + Constants.CACHE_FOLDER_NAME;
-        File rootFile = new File(cacheDir);
-
-        cachedVideosList.clear();
-        if (!rootFile.isDirectory()) {
-            return;
-        }
-
-        File[] files = rootFile.listFiles();
-        for (File file : files) {
-            if (!file.isDirectory()) {
-                if(file.getName().endsWith(".mp4")){
-                    cachedVideosList.add(file.getName());
-                }
-            }
-        }
-    }
-
     private void playVideoFromCache(String videoName) {
+        if (progressBar.getVisibility() == View.VISIBLE) {
+            progressBar.setVisibility(View.GONE);
+        }
         String videoAddress = Constants.CACHE_PATH + videoName;
 
         // set the path for the video view
@@ -301,53 +336,73 @@ public class VideoViewActivity extends AppCompatActivity {
         }
     }
 
-    private void showProgressBar(boolean isVisible) {
-        progressBar.setVisibility(isVisible ? View.VISIBLE : View.GONE);
+    private void getCachedVideosNames() {
+
+        String cacheDir = Environment.getExternalStorageDirectory() + File.separator + Constants.CACHE_FOLDER_NAME;
+        File rootFile = new File(cacheDir);
+
+        cachedVideosList.clear();
+        if (!rootFile.isDirectory()) {
+            return;
+        }
+
+        File[] files = rootFile.listFiles();
+        if (files == null) {
+            return;
+        }
+
+        for (File file : files) {
+            if (!file.isDirectory()) {
+                if(file.getName().endsWith(".mp4")){
+                    cachedVideosList.add(file.getName());
+                }
+            }
+        }
     }
 
-    private void loadVideosName() {
+    private void removeUnnecessaryCachedVideos() {
 
-//        Bundle bundle = new Bundle();
-//        bundle.putStringArrayList(VideoDownloaderService.VIDEOS_NAME_LIST, videosToDownload);
-        Intent intent = new Intent(this, VideosNameDownloaderService.class);
-//        intent.putExtras(bundle);
-        startService(intent);
+        getCachedVideosNames();
+
+        for (String name : cachedVideosList) {
+            if (!loadedVideosNamesList.contains(name)) {
+                String videoAddress = Constants.CACHE_PATH + name;
+                File videoFile = new File(videoAddress);
+                if (videoFile.exists()) {
+                    if (videoFile.delete()) {
+                        cachedVideosList.remove(name);
+                    } else {
+                        Log.e("LOG_TAG", "Can not delete video");
+                    }
+                }
+            }
+        }
+    }
+
+    private void loadVideosNames() {
+        if (Utils.isNetworkAvailable(this)) {
+            progressBar.setVisibility(View.VISIBLE);
+            isVideoPlaying = false;
+            Intent intent = new Intent(this, VideosNamesDownloaderService.class);
+            startService(intent);
+        } else {
+            playVideo();
+        }
     }
 
     private void loadVideos(ArrayList<String> videosToDownload) {
-
+        isCachingCompleted = false;
         Bundle bundle = new Bundle();
         bundle.putStringArrayList(VideoDownloaderService.VIDEOS_NAME_LIST, videosToDownload);
-
         Intent intent = new Intent(this, VideoDownloaderService.class);
         intent.putExtras(bundle);
-
         startService(intent);
     }
 
-    @Override
-    protected void onSaveInstanceState(Bundle outState) {
-        outState.putInt(CURRENT_VIDEO_INDEX, currentVideoIndex);
-        outState.putInt(PLAYED_VIDEOS_COUNT, playedVideosCount);
-        outState.putInt(PLAYED_POSITION, videoView.getCurrentPosition());
-        outState.putBoolean(IS_PLAYING, videoView.isPlaying());
-        super.onSaveInstanceState(outState);
-    }
+    public void permissionButtonClicked(View view) {
 
-    @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        switch (requestCode) {
-            case 1: {
-                // If request is cancelled, the result arrays are empty.
-                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    // permission was granted
-                    loadVideos(loadedVideosList);
-                } else {
-                    // permission denied
-                    Toast.makeText(this, "Permission denied to read your External storage", Toast.LENGTH_SHORT).show();
-                }
-                return;
-            }
+        if (!Utils.doesUserHavePermission(this)) {
+            requestPermissions();
         }
     }
 }

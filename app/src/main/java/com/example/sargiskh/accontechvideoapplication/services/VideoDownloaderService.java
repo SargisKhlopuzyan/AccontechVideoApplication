@@ -7,7 +7,6 @@ import android.os.Environment;
 import android.util.Log;
 
 import com.example.sargiskh.accontechvideoapplication.EventMessage;
-import com.example.sargiskh.accontechvideoapplication.R;
 import com.example.sargiskh.accontechvideoapplication.helpers.Constants;
 
 import org.greenrobot.eventbus.EventBus;
@@ -28,7 +27,7 @@ public class VideoDownloaderService extends IntentService {
 
     public static String VIDEOS_NAME_LIST = "VIDEOS_NAME_LIST";
 
-    private ArrayList<String> videosNameToDownload = new ArrayList<>();
+    private ArrayList<String> videosToDownload = new ArrayList<>();
     private String cacheDir = "";
     private File rootFile;
 
@@ -38,21 +37,17 @@ public class VideoDownloaderService extends IntentService {
 
     @Override
     protected void onHandleIntent(Intent intent) {
-        Log.e("LOG_TAG", "onHandleIntent");
-
         createRootDirectory();
 
         Bundle bundle = intent.getExtras();
-        videosNameToDownload = bundle.getStringArrayList(VIDEOS_NAME_LIST);
-        Log.e("LOG_TAG", "videosNameToDownload: " + videosNameToDownload.toString());
+        videosToDownload = bundle.getStringArrayList(VIDEOS_NAME_LIST);
 
-        if (videosNameToDownload == null) {
+        if (videosToDownload == null) {
             return;
         }
 
-        for (int i = 0; i < videosNameToDownload.size(); i++) {
-            Log.e("LOG_TAG", "videoName: " + videosNameToDownload.get(i));
-            downloadFile(videosNameToDownload.get(i));
+        for (int i = 0; i < videosToDownload.size(); i++) {
+            downloadFile(i);
         }
     }
 
@@ -62,32 +57,57 @@ public class VideoDownloaderService extends IntentService {
         rootFile.mkdir();
     }
 
-    public void downloadFile(String videoName) {
-
-        try {
-            String videoURL = Constants.BASE_URL + videoName;
-
-            URL url = new URL(videoURL);
-            HttpURLConnection c = (HttpURLConnection) url.openConnection();
-            c.setRequestMethod("GET");
-            c.setDoOutput(true);
-            c.connect();
-
-            FileOutputStream f = new FileOutputStream(new File(rootFile, videoName));
-            InputStream in = c.getInputStream();
-            byte[] buffer = new byte[1024];
-            int len1 = 0;
-            while ((len1 = in.read(buffer)) > 0) {
-                f.write(buffer, 0, len1);
-            }
-            f.close();
-
-            Log.e("LOG_TAG", "OK");
-        } catch (IOException e) {
-            Log.e("LOG_TAG", "IOException: " + e.toString());
-        }
-
-        EventBus.getDefault().post(new EventMessage(getString(R.string.at_list_one_video_is_downloaded)));
+    private String checkVideoNameSpelling(String name) {
+        return name.replace(" ", "%20");
     }
 
+    public void downloadFile(int i) {
+
+        String originalVideoName = videosToDownload.get(i);
+
+        if (!isVideoCached(originalVideoName)) {
+            String videoName = checkVideoNameSpelling(originalVideoName);
+
+            try {
+                String videoURL = Constants.BASE_URL + videoName;
+
+                URL url = new URL(videoURL);
+                HttpURLConnection c = (HttpURLConnection) url.openConnection();
+                c.setRequestMethod("GET");
+                c.setDoOutput(true);
+                c.connect();
+
+                FileOutputStream f = new FileOutputStream(new File(rootFile, originalVideoName));
+                InputStream in = c.getInputStream();
+                byte[] buffer = new byte[1024];
+                int len1 = 0;
+                while ((len1 = in.read(buffer)) > 0) {
+                    f.write(buffer, 0, len1);
+                }
+                f.close();
+
+            } catch (IOException e) {
+            }
+
+            if (i == videosToDownload.size() - 1) {
+                EventBus.getDefault().post(new EventMessage(originalVideoName, true, false));
+            } else {
+                EventBus.getDefault().post(new EventMessage(originalVideoName, false, false));
+            }
+        } else {
+            if (i == videosToDownload.size() - 1) {
+                EventBus.getDefault().post(new EventMessage(null, true, false));
+            } else {
+                EventBus.getDefault().post(new EventMessage(null, false, false));
+            }
+        }
+    }
+
+    private boolean isVideoCached(String videoName) {
+        String videoAddress = Constants.CACHE_PATH + videoName;
+        File videoFile = new File(videoAddress);
+        if (videoFile.exists())
+            return true;
+        return false;
+    }
 }
