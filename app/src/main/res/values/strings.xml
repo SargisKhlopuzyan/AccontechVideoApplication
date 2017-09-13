@@ -3,4 +3,6 @@
     <string name="at_list_one_video_is_downloaded">At list one video is downloaded</string>
     <string name="videos_names_are_downloaded">videos names are downloaded</string>
     <string name="permission_button_text">Enable permission for downloaded videos</string>
+    <string name="start_downloading">Start downloading</string>
+    <string name="internet_connection_error_text">Check internet connection and try again</string>
 </resources>

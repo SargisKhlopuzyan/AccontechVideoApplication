@@ -8,14 +8,18 @@ import android.util.Log;
 
 import com.example.sargiskh.accontechvideoapplication.EventMessage;
 import com.example.sargiskh.accontechvideoapplication.helpers.Constants;
+import com.example.sargiskh.accontechvideoapplication.helpers.Utils;
 
 import org.greenrobot.eventbus.EventBus;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.ProtocolException;
 import java.net.URL;
 import java.util.ArrayList;
 
@@ -47,7 +51,11 @@ public class VideoDownloaderService extends IntentService {
         }
 
         for (int i = 0; i < videosToDownload.size(); i++) {
-            downloadFile(i);
+            if (Utils.isNetworkAvailable(this)) {
+                downloadFile(i);
+            } else {
+                EventBus.getDefault().post(new EventMessage(true));
+            }
         }
     }
 
@@ -85,8 +93,18 @@ public class VideoDownloaderService extends IntentService {
                     f.write(buffer, 0, len1);
                 }
                 f.close();
-
+            } catch (FileNotFoundException e) {
+                deleteVideo(originalVideoName);
+                EventBus.getDefault().post(new EventMessage(true));
+            } catch (ProtocolException e) {
+                deleteVideo(originalVideoName);
+                EventBus.getDefault().post(new EventMessage(true));
+            } catch (MalformedURLException e) {
+                deleteVideo(originalVideoName);
+                EventBus.getDefault().post(new EventMessage(true));
             } catch (IOException e) {
+                deleteVideo(originalVideoName);
+                EventBus.getDefault().post(new EventMessage(true));
             }
 
             if (i == videosToDownload.size() - 1) {
@@ -109,5 +127,12 @@ public class VideoDownloaderService extends IntentService {
         if (videoFile.exists())
             return true;
         return false;
+    }
+
+    private void deleteVideo(String videoAddress) {
+        File videoFile = new File(videoAddress);
+        if (videoFile.exists()) {
+            videoFile.delete();
+        }
     }
 }

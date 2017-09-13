@@ -10,7 +10,6 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
-import android.support.v4.util.ArraySet;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.view.MotionEvent;
@@ -35,7 +34,6 @@ import org.greenrobot.eventbus.ThreadMode;
 
 import java.io.File;
 import java.util.ArrayList;
-import java.util.Set;
 
 public class VideoViewActivity extends AppCompatActivity {
 
@@ -49,6 +47,7 @@ public class VideoViewActivity extends AppCompatActivity {
     private SeekBar seekBar;
     private ProgressBar progressBar;
     private Button permissionButton;
+    private View internetConnectionErrorView;
 
     private MediaController mediaControls;
 
@@ -59,17 +58,12 @@ public class VideoViewActivity extends AppCompatActivity {
     private boolean isVideoPlaying = false;
     private int currentPlayingVideoIndex = 0;
 
-
     EventBus eventBus = EventBus.getDefault();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        requestWindowFeature(Window.FEATURE_NO_TITLE);
-        getWindow().setFlags(
-                WindowManager.LayoutParams.FLAG_FULLSCREEN,
-                WindowManager.LayoutParams.FLAG_FULLSCREEN);
-
+        setFullScreen();
         setContentView(R.layout.activity_video_view);
 
         getCachedVideosNames();
@@ -78,67 +72,9 @@ public class VideoViewActivity extends AppCompatActivity {
 
         setupMediaController();
 
-        if (savedInstanceState != null) {
-
-            if (!Utils.doesUserHavePermission(this)) {
-                permissionButton.setVisibility(View.VISIBLE);
-            } else {
-                permissionButton.setVisibility(View.GONE);
-            }
-
-            currentPlayingVideoIndex = savedInstanceState.getInt(CURRENT_PLAYING_VIDEO_INDEX);
-            loadedVideosNamesList = savedInstanceState.getStringArrayList(LOADED_VIDEOS_LIST);
-            int videoPlayedDuration = savedInstanceState.getInt(VIDEO_PLAYED_DURATION);
-            boolean isPlaying = savedInstanceState.getBoolean(IS_PLAYING);
-
-            int isVisible = savedInstanceState.getInt(PROGRESS_BAR_VISIBILITY) == View.VISIBLE ? View.VISIBLE : View.GONE;
-            progressBar.setVisibility(isVisible);
-
-            if (currentPlayingVideoIndex < loadedVideosNamesList.size()) {
-                String name = loadedVideosNamesList.get(currentPlayingVideoIndex);
-                if (name != null && isVideoCached(name)) {
-                    playVideoFromCache(loadedVideosNamesList.get(currentPlayingVideoIndex), isPlaying, videoPlayedDuration);
-                }
-            }
-        } else  {
-            if (!Utils.doesUserHavePermission(this)) {
-                permissionButton.setVisibility(View.VISIBLE);
-                requestPermissions();
-            } else {
-                permissionButton.setVisibility(View.GONE);
-                if (Utils.isNetworkAvailable(this)) {
-                    loadVideosNames();
-                } else {
-                    playVideo();
-                }
-            }
-        }
+        handleSavedInstanceState(savedInstanceState);
 
         setListeners();
-
-        videoView.setOnTouchListener(new View.OnTouchListener() {
-            @Override
-            public boolean onTouch(View v, MotionEvent event) {
-                int isVisible = seekBar.getVisibility() ==  View.VISIBLE ? View.GONE : View.VISIBLE;
-                seekBar.setVisibility(isVisible);
-                return false;
-            }
-        });
-
-        // implement on completion listener on video view
-        videoView.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
-            @Override
-            public void onCompletion(MediaPlayer mp) {
-                playNextVideo();
-            }
-        });
-
-        videoView.setOnErrorListener(new MediaPlayer.OnErrorListener() {
-            @Override
-            public boolean onError(MediaPlayer mp, int what, int extra) {
-                return false;
-            }
-        });
     }
 
     @Override
@@ -184,6 +120,11 @@ public class VideoViewActivity extends AppCompatActivity {
 
     @Subscribe(threadMode = ThreadMode.MAIN)
     public void messageEventFromService(EventMessage event){
+
+        if (event.isConnectionError()) {
+            return;
+        }
+
         boolean isLoadingVideosNames = event.isLoadedVideosNames();
 
         if (isLoadingVideosNames) {
@@ -228,12 +169,54 @@ public class VideoViewActivity extends AppCompatActivity {
         }
     }
 
+    private void setFullScreen() {
+        requestWindowFeature(Window.FEATURE_NO_TITLE);
+        getWindow().setFlags(
+                WindowManager.LayoutParams.FLAG_FULLSCREEN,
+                WindowManager.LayoutParams.FLAG_FULLSCREEN);
+    }
+
+    private void handleSavedInstanceState(Bundle savedInstanceState) {
+        if (savedInstanceState != null) {
+
+            if (!Utils.doesUserHavePermission(this)) {
+                permissionButton.setVisibility(View.VISIBLE);
+            } else {
+                permissionButton.setVisibility(View.GONE);
+            }
+
+            currentPlayingVideoIndex = savedInstanceState.getInt(CURRENT_PLAYING_VIDEO_INDEX);
+            loadedVideosNamesList = savedInstanceState.getStringArrayList(LOADED_VIDEOS_LIST);
+            int videoPlayedDuration = savedInstanceState.getInt(VIDEO_PLAYED_DURATION);
+            boolean isPlaying = savedInstanceState.getBoolean(IS_PLAYING);
+
+            int isVisible = savedInstanceState.getInt(PROGRESS_BAR_VISIBILITY) == View.VISIBLE ? View.VISIBLE : View.GONE;
+            progressBar.setVisibility(isVisible);
+
+            if (currentPlayingVideoIndex < loadedVideosNamesList.size()) {
+                String name = loadedVideosNamesList.get(currentPlayingVideoIndex);
+                if (name != null && isVideoCached(name)) {
+                    playVideoFromCache(loadedVideosNamesList.get(currentPlayingVideoIndex), isPlaying, videoPlayedDuration);
+                }
+            }
+        } else  {
+            if (!Utils.doesUserHavePermission(this)) {
+                permissionButton.setVisibility(View.VISIBLE);
+                requestPermissions();
+            } else {
+                permissionButton.setVisibility(View.GONE);
+                loadVideosNames();
+            }
+        }
+    }
+
     // Finds views
     private void findViews() {
         videoView = (VideoView) findViewById(R.id.video_view);
         seekBar = (SeekBar) findViewById(R.id.seekBar);
         progressBar = (ProgressBar) findViewById(R.id.progress_bar);
         permissionButton = (Button) findViewById(R.id.button_permission);
+        internetConnectionErrorView = findViewById(R.id.internet_connection_error_view);
     }
 
     private void setListeners() {
@@ -258,6 +241,30 @@ public class VideoViewActivity extends AppCompatActivity {
 
             }
         });
+
+        videoView.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                int isVisible = seekBar.getVisibility() ==  View.VISIBLE ? View.GONE : View.VISIBLE;
+                seekBar.setVisibility(isVisible);
+                return false;
+            }
+        });
+
+        // implement on completion listener on video view
+        videoView.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
+            @Override
+            public void onCompletion(MediaPlayer mp) {
+                playNextVideo();
+            }
+        });
+
+        videoView.setOnErrorListener(new MediaPlayer.OnErrorListener() {
+            @Override
+            public boolean onError(MediaPlayer mp, int what, int extra) {
+                return false;
+            }
+        });
     }
 
     // Sets MediaController
@@ -277,7 +284,17 @@ public class VideoViewActivity extends AppCompatActivity {
         playVideo();
     }
 
+    private void showInternetConnectionError() {
+        internetConnectionErrorView.setVisibility(View.VISIBLE);
+    }
+
     private void playVideo() {
+
+        if (!Utils.isNetworkAvailable(this) && cachedVideosList.size() == 0) {
+            showInternetConnectionError();
+            return;
+        }
+
         if (isCachingCompleted) {
             if (currentPlayingVideoIndex == cachedVideosList.size()) {
                 currentPlayingVideoIndex = 0;
@@ -400,9 +417,17 @@ public class VideoViewActivity extends AppCompatActivity {
     }
 
     public void permissionButtonClicked(View view) {
-
         if (!Utils.doesUserHavePermission(this)) {
             requestPermissions();
+        }
+    }
+
+    public void internetConnectionErrorButtonClicked(View view) {
+        if (Utils.isNetworkAvailable(this)) {
+            internetConnectionErrorView.setVisibility(View.GONE);
+            loadVideosNames();
+        } else {
+            internetConnectionErrorView.setVisibility(View.VISIBLE);
         }
     }
 }
