@@ -29,8 +29,6 @@ import java.util.ArrayList;
  */
 public class VideoDownloaderService extends IntentService {
 
-    public static String VIDEOS_NAME_LIST = "VIDEOS_NAME_LIST";
-
     private ArrayList<String> videosToDownload = new ArrayList<>();
     private String cacheDir = "";
     private File rootFile;
@@ -44,7 +42,7 @@ public class VideoDownloaderService extends IntentService {
         createRootDirectory();
 
         Bundle bundle = intent.getExtras();
-        videosToDownload = bundle.getStringArrayList(VIDEOS_NAME_LIST);
+        videosToDownload = bundle.getStringArrayList(Constants.VIDEOS_NAME_LIST);
 
         if (videosToDownload == null) {
             return;
@@ -129,7 +127,8 @@ public class VideoDownloaderService extends IntentService {
         return false;
     }
 
-    private void deleteVideo(String videoAddress) {
+    private void deleteVideo(String name) {
+        String videoAddress = Constants.CACHE_PATH + name;
         File videoFile = new File(videoAddress);
         if (videoFile.exists()) {
             videoFile.delete();

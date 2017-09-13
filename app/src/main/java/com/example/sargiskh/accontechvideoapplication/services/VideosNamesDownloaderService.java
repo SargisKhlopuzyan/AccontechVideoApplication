@@ -5,6 +5,7 @@ import android.content.Intent;
 
 import com.example.sargiskh.accontechvideoapplication.EventMessage;
 import com.example.sargiskh.accontechvideoapplication.helpers.Constants;
+import com.example.sargiskh.accontechvideoapplication.helpers.Utils;
 
 import org.greenrobot.eventbus.EventBus;
 import org.jsoup.Jsoup;
@@ -41,7 +42,11 @@ public class VideosNamesDownloaderService extends IntentService {
 
         Elements elements = doc.select("a");
 
-        getVideosNamesList(elements);
+        if (Utils.isNetworkAvailable(this)) {
+            getVideosNamesList(elements);
+        } else {
+            EventBus.getDefault().post(new EventMessage(true));
+        }
     }
 
     private void getVideosNamesList(Elements elements) {

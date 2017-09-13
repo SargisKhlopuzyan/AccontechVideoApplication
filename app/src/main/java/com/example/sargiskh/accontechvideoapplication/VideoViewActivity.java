@@ -37,12 +37,6 @@ import java.util.ArrayList;
 
 public class VideoViewActivity extends AppCompatActivity {
 
-    private static String CURRENT_PLAYING_VIDEO_INDEX = "CURRENT_PLAYING_VIDEO_INDEX";
-    private static String LOADED_VIDEOS_LIST = "LOADED_VIDEOS_LIST";
-    private static String VIDEO_PLAYED_DURATION = "VIDEO_PLAYED_DURATION";
-    private static String PROGRESS_BAR_VISIBILITY = "PROGRESS_BAR_VISIBILITY";
-    private static String IS_PLAYING = "IS_PLAYING";
-
     private VideoView videoView;
     private SeekBar seekBar;
     private ProgressBar progressBar;
@@ -63,6 +57,7 @@ public class VideoViewActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
         setFullScreen();
         setContentView(R.layout.activity_video_view);
 
@@ -91,11 +86,11 @@ public class VideoViewActivity extends AppCompatActivity {
 
     @Override
     protected void onSaveInstanceState(Bundle outState) {
-        outState.putInt(CURRENT_PLAYING_VIDEO_INDEX, currentPlayingVideoIndex);
-        outState.putInt(VIDEO_PLAYED_DURATION, videoView.getCurrentPosition());
-        outState.putBoolean(IS_PLAYING, videoView.isPlaying());
-        outState.putInt(PROGRESS_BAR_VISIBILITY, progressBar.getVisibility());
-        outState.putStringArrayList(LOADED_VIDEOS_LIST, loadedVideosNamesList);
+        outState.putInt(Constants.CURRENT_PLAYING_VIDEO_INDEX, currentPlayingVideoIndex);
+        outState.putInt(Constants.VIDEO_PLAYED_DURATION, videoView.getCurrentPosition());
+        outState.putBoolean(Constants.IS_PLAYING, videoView.isPlaying());
+        outState.putInt(Constants.PROGRESS_BAR_VISIBILITY, progressBar.getVisibility());
+        outState.putStringArrayList(Constants.LOADED_VIDEOS_LIST, loadedVideosNamesList);
         super.onSaveInstanceState(outState);
     }
 
@@ -128,7 +123,6 @@ public class VideoViewActivity extends AppCompatActivity {
         boolean isLoadingVideosNames = event.isLoadedVideosNames();
 
         if (isLoadingVideosNames) {
-            Log.e("LOG_TAG", "VIDEO NAMES LOADED");
             loadedVideosNamesList.clear();
             for (String name : event.getVideosNames()) {
                 loadedVideosNamesList.add(name);
@@ -136,7 +130,6 @@ public class VideoViewActivity extends AppCompatActivity {
             removeUnnecessaryCachedVideos();
 
             if (Utils.doesUserHavePermission(this)) {
-                Log.e("LOG_TAG", "doesUserHavePermission: " + loadedVideosNamesList);
                 loadVideos(loadedVideosNamesList);
             }
 
@@ -185,18 +178,18 @@ public class VideoViewActivity extends AppCompatActivity {
                 permissionButton.setVisibility(View.GONE);
             }
 
-            currentPlayingVideoIndex = savedInstanceState.getInt(CURRENT_PLAYING_VIDEO_INDEX);
-            loadedVideosNamesList = savedInstanceState.getStringArrayList(LOADED_VIDEOS_LIST);
-            int videoPlayedDuration = savedInstanceState.getInt(VIDEO_PLAYED_DURATION);
-            boolean isPlaying = savedInstanceState.getBoolean(IS_PLAYING);
+            currentPlayingVideoIndex = savedInstanceState.getInt(Constants.CURRENT_PLAYING_VIDEO_INDEX);
+            loadedVideosNamesList = savedInstanceState.getStringArrayList(Constants.LOADED_VIDEOS_LIST);
+            int videoPlayedDuration = savedInstanceState.getInt(Constants.VIDEO_PLAYED_DURATION);
+            boolean isPlaying = savedInstanceState.getBoolean(Constants.IS_PLAYING);
 
-            int isVisible = savedInstanceState.getInt(PROGRESS_BAR_VISIBILITY) == View.VISIBLE ? View.VISIBLE : View.GONE;
+            int isVisible = savedInstanceState.getInt(Constants.PROGRESS_BAR_VISIBILITY) == View.VISIBLE ? View.VISIBLE : View.GONE;
             progressBar.setVisibility(isVisible);
 
-            if (currentPlayingVideoIndex < loadedVideosNamesList.size()) {
-                String name = loadedVideosNamesList.get(currentPlayingVideoIndex);
+            if (currentPlayingVideoIndex < cachedVideosList.size()) {
+                String name = cachedVideosList.get(currentPlayingVideoIndex);
                 if (name != null && isVideoCached(name)) {
-                    playVideoFromCache(loadedVideosNamesList.get(currentPlayingVideoIndex), isPlaying, videoPlayedDuration);
+                    playVideoFromCache(name, isPlaying, videoPlayedDuration);
                 }
             }
         } else  {
@@ -410,7 +403,7 @@ public class VideoViewActivity extends AppCompatActivity {
     private void loadVideos(ArrayList<String> videosToDownload) {
         isCachingCompleted = false;
         Bundle bundle = new Bundle();
-        bundle.putStringArrayList(VideoDownloaderService.VIDEOS_NAME_LIST, videosToDownload);
+        bundle.putStringArrayList(Constants.VIDEOS_NAME_LIST, videosToDownload);
         Intent intent = new Intent(this, VideoDownloaderService.class);
         intent.putExtras(bundle);
         startService(intent);
