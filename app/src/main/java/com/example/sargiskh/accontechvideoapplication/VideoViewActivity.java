@@ -219,7 +219,6 @@ public class VideoViewActivity extends AppCompatActivity {
             public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
 
                 AudioManager audioManager = (AudioManager) getApplicationContext().getSystemService(Context.AUDIO_SERVICE);
-//                audioManager.adjustVolume(AudioManager.ADJUST_RAISE, AudioManager.FLAG_PLAY_SOUND);
                 Log.e("LOG_TAG", "progress: " + progress);
                 audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, progress, 0);
             }
@@ -238,8 +237,8 @@ public class VideoViewActivity extends AppCompatActivity {
         videoView.setOnTouchListener(new View.OnTouchListener() {
             @Override
             public boolean onTouch(View v, MotionEvent event) {
-                int isVisible = seekBar.getVisibility() ==  View.VISIBLE ? View.GONE : View.VISIBLE;
-                seekBar.setVisibility(isVisible);
+                boolean isVisible = seekBar.getVisibility() ==  View.VISIBLE ? false : true;
+                setSeekBar(isVisible);
                 return false;
             }
         });
@@ -258,6 +257,20 @@ public class VideoViewActivity extends AppCompatActivity {
                 return false;
             }
         });
+    }
+
+    private void setSeekBar(boolean isSeekBarVisible) {
+        AudioManager audio = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+        int streamVolume = audio.getStreamVolume(AudioManager.STREAM_MUSIC);
+        int streamMaxVolume = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+        if (isSeekBarVisible) {
+            seekBar.setMax(streamMaxVolume);
+            seekBar.setProgress(streamVolume);
+            seekBar.setVisibility(View.VISIBLE);
+        } else {
+            seekBar.setVisibility(View.GONE);
+        }
+
     }
 
     // Sets MediaController
